@@ -27,4 +27,30 @@ defmodule Streamz do
     Streamz.merge([stream, wrapped_cutoff])
       |> Stream.take_while &( &1 != ref )
   end
+
+  def combine_latest_two(stream1, stream2, fun) do
+    first = Stream.map(stream1, &({1, &1}))
+    second = Stream.map(stream2, &({2, &1}))
+    parent = self
+    pid = spawn_link fn ->
+      func = fun
+      Streamz.merge(first, second) |> Enum.reduce(fn el, {nil, nil}, {a,b} ->
+        receive do
+          {:get, parent} ->
+            case el do
+              {1,_} ->
+                unless a == nil or b == nil do
+                  send parent, func(el, b)
+                end
+                {el,b}
+              {2, _} ->
+                unless a == nil or b == nil do
+                  send parent, func(a, el)
+                end
+                {a, el}
+            end
+        end
+      end)
+    end
+  end
 end
